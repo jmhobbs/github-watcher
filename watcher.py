@@ -97,29 +97,26 @@ class Console ( gtk.Frame ):
 class Watcher:
 	def __init__ ( self ):
 		gtk.window_set_default_icon_from_file( 'icon.16.png' )
-		
-		self.window_open = True
-		
+
 		self.tray = gtk.status_icon_new_from_file( 'icon.16.png' )
 		self.tray.set_tooltip( 'GitHub Watcher' )
-		self.tray.connect( 'activate', self.tray_activate )
 		self.tray.connect( 'popup-menu', self.tray_popup )
 
 		self.tray_menu = gtk.Menu()
-		self.shide_item = gtk.MenuItem( "Show / Hide" )
-		self.shide_item.connect( "activate", self.tray_activate )
-		self.shide_item.show()
-		self.tray_menu.append( self.shide_item )
+		menu_item = gtk.MenuItem( "Show" )
+		menu_item.connect( "activate", self.show_window )
+		menu_item.show()
+		
+		self.tray_menu.append( menu_item )
 		menu_item = gtk.MenuItem( "Quit" )
 		menu_item.connect( "activate", self.quit )
 		menu_item.show()
 		self.tray_menu.append( menu_item )
 		
 		self.window = gtk.Window( gtk.WINDOW_TOPLEVEL )
-		self.window.connect( "destroy", self.hide ) # This is the problem.
+		self.window.connect( "delete_event", self.hide )
 		self.window.set_title( "GitHub Watcher" )
 		self.window.set_size_request( 400, 200 )
-		self.window.set_deletable( False )
 		
 		self.repos = gtk.VBox()
 		
@@ -136,23 +133,16 @@ class Watcher:
 		vbox.pack_end( self.status, False, False, 0 )
 		vbox.pack_end( scroll, True, True, 0 )
 		
-		self.window.add( vbox )
-		
-		self.window.show_all()
-		
 		self.set_status( 'Welcome to GitHub Watcher!' )
+		
+		self.window.add( vbox )
+		self.window.show_all()
 
-	def tray_activate ( self, data ):
-		if self.window_open:
-			self.window.hide()
-		else:
-			self.window.show_all()
-		self.window_open = not self.window_open
+	def show_window ( self, data ):
+		self.window.present()
 
-	def hide ( self, data ):
-		self.window_open = False
+	def hide ( self, data, other ):
 		self.window.hide()
-		#self.shide_item
 		return True
 
 	def quit ( self, data ):
