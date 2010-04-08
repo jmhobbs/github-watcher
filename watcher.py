@@ -47,11 +47,20 @@ class Repo ( gtk.Frame ):
 		label.set_alignment( 0, 1 )
 		table.attach( label, 1, 2, 0, 1 )
 		
+		label = gtk.Label( '<b>Owner:</b>' )
+		label.set_use_markup( True )
+		label.set_alignment( 1, 1 )
+		table.attach( label, 2, 3, 0, 1 )
+		label = gtk.Label( self.owner )
+		label.set_use_markup( True )
+		label.set_alignment( 0, 1 )
+		table.attach( label, 3, 4, 0, 1 )
+		
 		self.add( table )
 
 class Console ( gtk.Frame ):
 
-	def __init__ ( self ):
+	def __init__ ( self, username ):
 		gtk.Frame.__init__( self )
 		
 		table = gtk.Table( 2, 4 )
@@ -62,7 +71,7 @@ class Console ( gtk.Frame ):
 		label.set_use_markup( True )
 		label.set_alignment( 1, 1 )
 		table.attach( label, 0, 1, 0, 1 )
-		label= gtk.Label( "jmhobbs" )
+		label= gtk.Label( username )
 		label.set_use_markup( True )
 		label.set_alignment( 0, 1 )
 		table.attach( label, 1, 2, 0, 1 )
@@ -94,10 +103,23 @@ class Console ( gtk.Frame ):
 		
 		self.add( table )
 
-class Watcher:
-	def __init__ ( self ):
-		gtk.window_set_default_icon_from_file( 'icon.16.png' )
+	def set_last_update ( self, when ):
+		self.last_update.set_text( when )
+	
+	def set_next_update ( self, when ):
+		self.next_update.set_text( when )
 
+class Watcher:
+	def __init__ ( self, username, interval, sync, directory ):
+
+		self.username = username
+		self.interval = interval
+		self.sync = sync
+		self.sync_directory = directory
+
+		gtk.window_set_default_icon_from_file( 'icon.16.png' )
+		
+		# Setup Tray
 		self.tray = gtk.status_icon_new_from_file( 'icon.16.png' )
 		self.tray.set_tooltip( 'GitHub Watcher' )
 		self.tray.connect( 'popup-menu', self.tray_popup )
@@ -113,8 +135,9 @@ class Watcher:
 		menu_item.show()
 		self.tray_menu.append( menu_item )
 		
+		# Setup Window
 		self.window = gtk.Window( gtk.WINDOW_TOPLEVEL )
-		self.window.connect( "delete_event", self.hide )
+		self.window.connect( "delete_event", self.hide_window )
 		self.window.set_title( "GitHub Watcher" )
 		self.window.set_size_request( 400, 200 )
 		
@@ -124,7 +147,7 @@ class Watcher:
 		scroll.set_policy( gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC )
 		scroll.add_with_viewport( self.repos )
 		
-		self.console = Console()
+		self.console = Console( self.username )
 		
 		self.status = gtk.Statusbar()
 		
@@ -137,34 +160,64 @@ class Watcher:
 		
 		self.window.add( vbox )
 		self.window.show_all()
+		
+		# Initial load of repos
+		self.set_status( 'Loading repository list...' )
+		self.gh = github.GitHub()
+		repos = self.gh.repos.watched( self.username )
+		for repo in repos:
+			self.add_repo( repo )
+		self.set_status( 'Repository list loaded.' )
+		# Start the update timer
+		#self.timer_id = gobject.timeout_add( 1000 * self.interval, self.update )
 
+	def update ( self ):
+		# TODO!
+		return
+
+	# Raise or show the window
 	def show_window ( self, data ):
 		self.window.present()
 
-	def hide ( self, data, other ):
+	# Hide the window
+	def hide_window ( self, data, other ):
 		self.window.hide()
 		return True
 
+	# Really quit
 	def quit ( self, data ):
 		gtk.main_quit()
 
+	# Show the tray menu
 	def tray_popup ( self, status, button, time ):
 		self.tray_menu.popup( None, None, None, button, time )
 
+	# Set the window status
 	def set_status ( self, message ):
 		context = self.status.get_context_id( 'status' )
 		self.status.pop( context )
 		self.status.push( context, message )
 
+	# Add a repo to the window
 	def add_repo ( self, repository ):
 		repo = Repo( repository )
-		repo.set_size_request( 100, 100 )
-		self.repos.pack_start( repo, False, False, 0 )
+		#repo.set_size_request( 100, 100 )
+		self.repos.pack_start( repo, False, False, 2 )
 		repo.show_all()
-
+	
+	# Run gtk!
 	def main( self ):
 		gtk.main()
 
 if __name__ == "__main__":
-	app = Watcher()
+	import ConfigParser
+	config = ConfigParser.RawConfigParser()
+	config.read( 'config.ini' )
+
+	app = Watcher( 
+		config.get( 'User', 'username' ),
+		config.getint( 'API', 'interval' ),
+		config.getboolean( 'Other', 'sync' ),
+		config.get( 'Other', 'sync-dir' )
+	)
 	app.main()
