@@ -5,24 +5,49 @@
 # http://github.com/dustin/py-github
 # http://develop.github.com/p/users.html
 
-#import github.github as github
-#import git
-
-#print "Fetching Watched Repository List"
-#gh = github.GitHub()
-#repos = gh.repos.watched( 'jmhobbs' )
-#print "Cloning First Repository"
-#git.Git().clone( "git://github.com/%s/%s.git" % ( repos[0].owner, repos[0].name ) )
+import github.github as github
+import git
 
 import pygtk
 pygtk.require( '2.0' )
 import gtk, gobject
 
+#print "Cloning First Repository"
+#git.Git().clone( "git://github.com/%s/%s.git" % ( repos[0].owner, repos[0].name ) )
+
+#gh = github.GitHub()
+#repos = gh.repos.watched( 'jmhobbs' )
+#for repo in repos:
+	#self.add_repo( repo )
 
 class Repo ( gtk.Frame ):
 
-	def __init__ ( self ):
+	name = ''
+	owner = ''
+	description = ''
+	revision = ''
+
+	def __init__ ( self, repository ):
 		gtk.Frame.__init__( self )
+		
+		self.name = repository.name
+		self.owner = repository.owner
+		self.description = repository.description
+		
+		table = gtk.Table( 2, 4 )
+		table.set_col_spacings( 5 )
+		table.set_row_spacings( 5 )
+		
+		label = gtk.Label( '<b>Name:</b>' )
+		label.set_use_markup( True )
+		label.set_alignment( 1, 1 )
+		table.attach( label, 0, 1, 0, 1 )
+		label = gtk.Label( self.name )
+		label.set_use_markup( True )
+		label.set_alignment( 0, 1 )
+		table.attach( label, 1, 2, 0, 1 )
+		
+		self.add( table )
 
 class Console ( gtk.Frame ):
 
@@ -31,6 +56,7 @@ class Console ( gtk.Frame ):
 		
 		table = gtk.Table( 2, 4 )
 		table.set_col_spacings( 5 )
+		table.set_row_spacings( 5 )
 		
 		label = gtk.Label( '<b>User:</b>' )
 		label.set_use_markup( True )
@@ -70,7 +96,7 @@ class Console ( gtk.Frame ):
 
 class Watcher:
 	def __init__ ( self ):
-		#gtk.window_set_default_icon_from_file( 'images/icon_16s.png' )
+		gtk.window_set_default_icon_from_file( 'icon.16.png' )
 		self.window = gtk.Window( gtk.WINDOW_TOPLEVEL )
 		self.window.connect( "destroy", lambda w: gtk.main_quit() )
 		self.window.set_title( "GitHub Watcher" )
@@ -82,20 +108,30 @@ class Watcher:
 		scroll.set_policy( gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC )
 		scroll.add_with_viewport( self.repos )
 		
-		self.status = Console()
+		self.console = Console()
+		
+		self.status = gtk.Statusbar()
 		
 		vbox = gtk.VBox()
-		vbox.pack_start( self.status, False, False, 0 )
+		vbox.pack_start( self.console, False, False, 0 )
+		vbox.pack_end( self.status, False, False, 0 )
 		vbox.pack_end( scroll, True, True, 0 )
 		
 		self.window.add( vbox )
 		self.window.show_all()
+		
+		self.set_status( 'Welcome to GitHub Watcher!' )
 
-	def add_repo ( self ):
-		repo = Repo()
+	def set_status ( self, message ):
+		context = self.status.get_context_id( 'status' )
+		self.status.pop( context )
+		self.status.push( context, message )
+
+	def add_repo ( self, repository ):
+		repo = Repo( repository )
 		repo.set_size_request( 100, 100 )
 		self.repos.pack_start( repo, False, False, 0 )
-		repo.show()
+		repo.show_all()
 
 	def main( self ):
 		gtk.main()
