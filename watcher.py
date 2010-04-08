@@ -5,6 +5,8 @@
 # http://github.com/dustin/py-github
 # http://develop.github.com/p/users.html
 
+from multiprocessing import Process, Queue
+
 import github.github as github
 import git
 
@@ -12,102 +14,26 @@ import pygtk
 pygtk.require( '2.0' )
 import gtk, gobject
 
+from console import Console
+
 #print "Cloning First Repository"
 #git.Git().clone( "git://github.com/%s/%s.git" % ( repos[0].owner, repos[0].name ) )
 
-#gh = github.GitHub()
-#repos = gh.repos.watched( 'jmhobbs' )
-#for repo in repos:
-	#self.add_repo( repo )
+class StubRepo:
+	name = "Stub"
+	owner = "Me"
+	description = "A Stub Repo"
 
-class Repo ( gtk.Frame ):
+def github_fetch ( queue, username, first_run=False ):
+		#gh = github.GitHub()
+		#repos = gh.repos.watched( username )
 
-	name = ''
-	owner = ''
-	description = ''
-	revision = ''
+		repos = ( StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo() )
 
-	def __init__ ( self, repository ):
-		gtk.Frame.__init__( self )
-		
-		self.name = repository.name
-		self.owner = repository.owner
-		self.description = repository.description
-		
-		table = gtk.Table( 2, 4 )
-		table.set_col_spacings( 5 )
-		table.set_row_spacings( 5 )
-		
-		label = gtk.Label( '<b>Name:</b>' )
-		label.set_use_markup( True )
-		label.set_alignment( 1, 1 )
-		table.attach( label, 0, 1, 0, 1 )
-		label = gtk.Label( self.name )
-		label.set_use_markup( True )
-		label.set_alignment( 0, 1 )
-		table.attach( label, 1, 2, 0, 1 )
-		
-		label = gtk.Label( '<b>Owner:</b>' )
-		label.set_use_markup( True )
-		label.set_alignment( 1, 1 )
-		table.attach( label, 2, 3, 0, 1 )
-		label = gtk.Label( self.owner )
-		label.set_use_markup( True )
-		label.set_alignment( 0, 1 )
-		table.attach( label, 3, 4, 0, 1 )
-		
-		self.add( table )
-
-class Console ( gtk.Frame ):
-
-	def __init__ ( self, username ):
-		gtk.Frame.__init__( self )
-		
-		table = gtk.Table( 2, 4 )
-		table.set_col_spacings( 5 )
-		table.set_row_spacings( 5 )
-		
-		label = gtk.Label( '<b>User:</b>' )
-		label.set_use_markup( True )
-		label.set_alignment( 1, 1 )
-		table.attach( label, 0, 1, 0, 1 )
-		label= gtk.Label( username )
-		label.set_use_markup( True )
-		label.set_alignment( 0, 1 )
-		table.attach( label, 1, 2, 0, 1 )
-		
-		label = gtk.Label( '<b>Last Update:</b>' )
-		label.set_use_markup( True )
-		label.set_alignment( 1, 1 )
-		table.attach( label, 2, 3, 0, 1 )
-		self.last_update = gtk.Label( "0000-00-00 00:00:00" )
-		self.last_update.set_use_markup( True )
-		self.last_update.set_alignment( 0, 1 )
-		table.attach( self.last_update, 3, 4, 0, 1 )
-		
-		label = gtk.Label( '<b>Repos Watched:</b>' )
-		label.set_use_markup( True )
-		label.set_alignment( 1, 1 )
-		table.attach( label, 0, 1, 1, 2 )
-		self.repo_count = gtk.Label( "0" )
-		self.repo_count.set_alignment( 0, 1 )
-		table.attach( self.repo_count, 1, 2, 1, 2 )
-		
-		label = gtk.Label( '<b>Next Update:</b>' )
-		label.set_use_markup( True )
-		label.set_alignment( 1, 1 )
-		table.attach( label, 2, 3, 1, 2 )
-		self.next_update = gtk.Label( "0000-00-00 00:00:00" )
-		self.next_update.set_alignment( 0, 1 )
-		table.attach( self.next_update, 3, 4, 1, 2 )
-		
-		self.add( table )
-
-	def set_last_update ( self, when ):
-		self.last_update.set_text( when )
-	
-	def set_next_update ( self, when ):
-		self.next_update.set_text( when )
+		if first_run:
+			queue.put( [ "LOAD", repos ] )
+		else:
+			queue.put( [ "UPDATE", repos ] )
 
 class Watcher:
 	def __init__ ( self, username, interval, sync, directory ):
@@ -141,35 +67,81 @@ class Watcher:
 		self.window.set_title( "GitHub Watcher" )
 		self.window.set_size_request( 400, 200 )
 		
-		self.repos = gtk.VBox()
+		# Setup repo view
+		self.repo_store = gtk.TreeStore( str, str, str )
+		tree_view = gtk.TreeView( self.repo_store )
+
+		cell = gtk.CellRendererText()
+		column = gtk.TreeViewColumn( "Name", cell, text=0 )
+		tree_view.append_column( column )
+
+		cell = gtk.CellRendererText()
+		column = gtk.TreeViewColumn( "", cell, text=1 )
+		cell.set_property( 'weight', 800 )
+		cell.set_property( 'xalign', 1 )
+		tree_view.append_column( column )
+
+		cell = gtk.CellRendererText()
+		column = gtk.TreeViewColumn( "", cell, text=2 )
+		tree_view.append_column( column )
+		
+		tree_view.set_enable_tree_lines( True )
+		tree_view.set_headers_visible( False )
 		
 		scroll = gtk.ScrolledWindow()
 		scroll.set_policy( gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC )
-		scroll.add_with_viewport( self.repos )
+		scroll.add_with_viewport( tree_view )
 		
+		# Add the console & status bar
 		self.console = Console( self.username )
-		
 		self.status = gtk.Statusbar()
+		self.set_status( 'Welcome to GitHub Watcher!' )
 		
+		# Pack it all in
 		vbox = gtk.VBox()
 		vbox.pack_start( self.console, False, False, 0 )
 		vbox.pack_end( self.status, False, False, 0 )
 		vbox.pack_end( scroll, True, True, 0 )
 		
-		self.set_status( 'Welcome to GitHub Watcher!' )
-		
 		self.window.add( vbox )
 		self.window.show_all()
 		
+		# Setup multi-processing
+		self.git_process = None
+		self.git_queue = Queue()
+		self.github_process = None
+		self.github_queue = Queue()
+		self.queue_timer = gobject.timeout_add( 250, self.check_queues )
+		
 		# Initial load of repos
-		self.set_status( 'Loading repository list...' )
-		self.gh = github.GitHub()
-		repos = self.gh.repos.watched( self.username )
-		for repo in repos:
-			self.add_repo( repo )
-		self.set_status( 'Repository list loaded.' )
+		self.set_status( 'Loading repository list.' )
+		self.github_process = Process( target=github_fetch, args=( self.github_queue, self.username, True ) )
+		self.github_process.daemon = True
+		self.github_process.start()
+
 		# Start the update timer
-		#self.timer_id = gobject.timeout_add( 1000 * self.interval, self.update )
+		self.update_timer = gobject.timeout_add( 1000 * self.interval, self.update )
+
+	def check_queues ( self ):
+		try:
+			while True:
+				item = self.git_queue.get( False )
+		except:
+			pass
+
+		try:
+			while True:
+				item = self.github_queue.get( False )
+				if "LOAD" == item[0]:
+					for repo in item[1]:
+						self.add_repo( repo )
+					self.set_status( 'Repository list loaded.' )
+				else:
+					print "Unknown GitHub Command:", item[0]
+		except:
+			pass
+		
+		return True
 
 	def update ( self ):
 		# TODO!
@@ -200,10 +172,13 @@ class Watcher:
 
 	# Add a repo to the window
 	def add_repo ( self, repository ):
-		repo = Repo( repository )
+		#repo = Repo( repository )
 		#repo.set_size_request( 100, 100 )
-		self.repos.pack_start( repo, False, False, 2 )
-		repo.show_all()
+		#self.repos.pack_start( repo, False, False, 2 )
+		#repo.show_all()
+		it = self.repo_store.append( None, [ repository.name, '', '' ] )
+		self.repo_store.append( it, [ '', '[Owner]', repository.owner ] )
+		self.repo_store.append( it, [ '', '[Desc]', repository.description ] )
 	
 	# Run gtk!
 	def main( self ):
