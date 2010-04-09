@@ -32,7 +32,7 @@ class Repo ( gtk.Frame ):
 	description = ''
 	revision = ''
 
-	def __init__ ( self, repository ):
+	def __init__ ( self, repository, clip=40 ):
 		gtk.Frame.__init__( self )
 
 		self.name = repository.name
@@ -44,7 +44,7 @@ class Repo ( gtk.Frame ):
 		table.set_row_spacings( 3 )
 
 		# ROW
-		label = gtk.Label( self.name )
+		label = gtk.Label( "<b><u>" + self.name + "</u></b>" )
 		label.set_alignment( 0, 1 )
 		label.set_use_markup( True )
 		table.attach( label, 0, 2, 0, 1, gtk.EXPAND|gtk.FILL, gtk.EXPAND|gtk.FILL, 2, 2 )
@@ -53,7 +53,7 @@ class Repo ( gtk.Frame ):
 		label = gtk.Label( '<b>Owner:</b>' )
 		label.set_use_markup( True )
 		label.set_alignment( 1, 1 )
-		table.attach( label, 0, 1, 1, 2, gtk.EXPAND|gtk.FILL, gtk.EXPAND|gtk.FILL, 2, 2 )
+		table.attach( label, 0, 1, 1, 2, 0, 0, 2, 2 )
 		
 		label = gtk.Label( self.owner )
 		label.set_use_markup( True )
@@ -64,9 +64,13 @@ class Repo ( gtk.Frame ):
 		label = gtk.Label( '<b>About:</b>' )
 		label.set_use_markup( True )
 		label.set_alignment( 1, 1 )
-		table.attach( label, 0, 1, 2, 3, gtk.EXPAND|gtk.FILL, gtk.EXPAND|gtk.FILL, 2, 2 )
+		table.attach( label, 0, 1, 2, 3, 0, 0, 2, 2 )
 		
-		label = gtk.Label( self.description )
+		desc = self.description
+		if len( desc ) > clip:
+			desc = desc[:clip-3] + '...'
+		
+		label = gtk.Label( desc )
 		label.set_use_markup( True )
 		label.set_alignment( 0, 1 )
 		table.attach( label, 1, 2, 2, 3, gtk.EXPAND|gtk.FILL, gtk.EXPAND|gtk.FILL, 2, 2 )
@@ -79,9 +83,14 @@ if __name__ == "__main__":
 		def __init__ ( self ):
 			self.window = gtk.Window()
 			self.window.connect( "destroy", lambda x: gtk.main_quit() )
-			stub = StubRepo()
-			self.repo = Repo( stub )
-			self.window.add( self.repo )
+			
+			vbox = gtk.VBox()
+			for i in range( 0, 5 ):
+				stub = StubRepo()
+				repo = Repo( stub )
+				vbox.pack_start( repo, False, False, 2 )
+			
+			self.window.add( vbox )
 			self.window.show_all()
 		
 		def main ( self ):

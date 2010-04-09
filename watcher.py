@@ -15,20 +15,17 @@ pygtk.require( '2.0' )
 import gtk, gobject
 
 from console import Console
-
+from repo import Repo
 #print "Cloning First Repository"
 #git.Git().clone( "git://github.com/%s/%s.git" % ( repos[0].owner, repos[0].name ) )
 
-class StubRepo:
-	name = "Stub"
-	owner = "Me"
-	description = "A Stub Repo"
 
 def github_fetch ( queue, username, first_run=False ):
-		#gh = github.GitHub()
-		#repos = gh.repos.watched( username )
-
-		repos = ( StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo() )
+		gh = github.GitHub()
+		repos = gh.repos.watched( username )
+		
+		#from repo import StubRepo
+		#repos = ( StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo() )
 
 		if first_run:
 			queue.put( [ "LOAD", repos ] )
@@ -36,12 +33,13 @@ def github_fetch ( queue, username, first_run=False ):
 			queue.put( [ "UPDATE", repos ] )
 
 class Watcher:
-	def __init__ ( self, username, interval, sync, directory ):
+	def __init__ ( self, username, interval, sync, directory, clip ):
 
 		self.username = username
 		self.interval = interval
 		self.sync = sync
 		self.sync_directory = directory
+		self.clip = clip
 
 		gtk.window_set_default_icon_from_file( 'icon.16.png' )
 		
@@ -65,32 +63,14 @@ class Watcher:
 		self.window = gtk.Window( gtk.WINDOW_TOPLEVEL )
 		self.window.connect( "delete_event", self.hide_window )
 		self.window.set_title( "GitHub Watcher" )
-		self.window.set_size_request( 400, 200 )
+		self.window.set_size_request( 600, 400 )
+		self.window.set_border_width( 5 )
 		
 		# Setup repo view
-		self.repo_store = gtk.TreeStore( str, str, str )
-		tree_view = gtk.TreeView( self.repo_store )
-
-		cell = gtk.CellRendererText()
-		column = gtk.TreeViewColumn( "Name", cell, text=0 )
-		tree_view.append_column( column )
-
-		cell = gtk.CellRendererText()
-		column = gtk.TreeViewColumn( "", cell, text=1 )
-		cell.set_property( 'weight', 800 )
-		cell.set_property( 'xalign', 1 )
-		tree_view.append_column( column )
-
-		cell = gtk.CellRendererText()
-		column = gtk.TreeViewColumn( "", cell, text=2 )
-		tree_view.append_column( column )
-		
-		tree_view.set_enable_tree_lines( True )
-		tree_view.set_headers_visible( False )
-		
+		self.repo_boxes = gtk.VBox()
 		scroll = gtk.ScrolledWindow()
 		scroll.set_policy( gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC )
-		scroll.add_with_viewport( tree_view )
+		scroll.add_with_viewport( self.repo_boxes )
 		
 		# Add the console & status bar
 		self.console = Console( self.username )
@@ -172,13 +152,12 @@ class Watcher:
 
 	# Add a repo to the window
 	def add_repo ( self, repository ):
-		#repo = Repo( repository )
-		#repo.set_size_request( 100, 100 )
-		#self.repos.pack_start( repo, False, False, 2 )
-		#repo.show_all()
-		it = self.repo_store.append( None, [ repository.name, '', '' ] )
-		self.repo_store.append( it, [ '', '[Owner]', repository.owner ] )
-		self.repo_store.append( it, [ '', '[Desc]', repository.description ] )
+		repo = Repo( repository, self.clip )
+		self.repo_boxes.pack_start( repo, False, False, 2 )
+		repo.show_all()
+		#it = self.repo_store.append( None, [ repository.name, '', '' ] )
+		#self.repo_store.append( it, [ '', '[Owner]', repository.owner ] )
+		#self.repo_store.append( it, [ '', '[Desc]', repository.description ] )
 	
 	# Run gtk!
 	def main( self ):
@@ -190,9 +169,10 @@ if __name__ == "__main__":
 	config.read( 'config.ini' )
 
 	app = Watcher( 
-		config.get( 'User', 'username' ),
+		config.get( 'General', 'username' ),
 		config.getint( 'API', 'interval' ),
-		config.getboolean( 'Other', 'sync' ),
-		config.get( 'Other', 'sync-dir' )
+		config.getboolean( 'Sync', 'sync' ),
+		config.get( 'Sync', 'sync-dir' ),
+		config.getint( 'General', 'description-clip' )
 	)
 	app.main()
