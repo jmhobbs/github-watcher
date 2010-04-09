@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import time
+import datetime
+
 import pygtk
 pygtk.require( '2.0' )
 import gtk
@@ -35,6 +38,9 @@ class Repo ( gtk.Frame ):
 	name = ''
 	owner = ''
 	description = ''
+	cloning = False
+	syncing = False
+	last_sync = 0
 
 	def __init__ ( self, repository, clip=40 ):
 		gtk.Frame.__init__( self )
@@ -79,7 +85,45 @@ class Repo ( gtk.Frame ):
 		label.set_alignment( 0, 1 )
 		table.attach( label, 1, 2, 2, 3, gtk.EXPAND|gtk.FILL, gtk.EXPAND|gtk.FILL, 2, 2 )
 
+		# ROW
+		label = gtk.Label( '<b>State:</b>' )
+		label.set_use_markup( True )
+		label.set_alignment( 1, 1 )
+		table.attach( label, 0, 1, 3, 4, 0, 0, 2, 2 )
+		
+		self.state_label = gtk.Label( "Unknown" )
+		self.state_label.set_alignment( 0, 1 )
+		table.attach( self.state_label, 1, 2, 3, 4, gtk.EXPAND|gtk.FILL, gtk.EXPAND|gtk.FILL, 2, 2 )
+
 		self.add( table )
+
+	def clone_start ( self ):
+		self.cloning = True
+		now = datetime.datetime.now()
+		self.state_label.set_text( "Cloning... - %s" % now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+	
+	def clone_end ( self, success=False ):
+		self.cloning = False
+		now = datetime.datetime.now()
+		if success:
+			self.state_label.set_text( "Cloning Complete - %s" % now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+		else:
+			self.state_label.set_text( "Cloning Failed - %s" % now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+		self.last_sync = time.mktime( now.timetuple() )
+	
+	def sync_start ( self ):
+		self.syncing = True
+		now = datetime.datetime.now()
+		self.state_label.set_text( "Pulling... - %s" % now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+	
+	def sync_end ( self, success=False ):
+		self.syncing = False
+		now = datetime.datetime.now()
+		if success:
+			self.state_label.set_text( "Pull Complete - %s" % now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+		else:
+			self.state_label.set_text( "Pull Failed - %s" % now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+		self.last_sync = time.mktime( now.timetuple() )
 
 if __name__ == "__main__":
 	
