@@ -18,19 +18,23 @@ class StubRepo:
 		[ "mf", "stuartherbert", "Methodosity Framework for PHP" ]
 	]
 
-	def __init__ ( self ):
-		import random
-		sample = random.sample( self.repos, 1 )
-		self.name = sample[0][0]
-		self.owner = sample[0][1]
-		self.description = sample[0][2]
+	def __init__ ( self, i=None ):
+		if i == None:
+			import random
+			sample = random.sample( self.repos, 1 )
+			self.name = sample[0][0]
+			self.owner = sample[0][1]
+			self.description = sample[0][2]
+		else:
+			self.name = self.repos[i][0]
+			self.owner = self.repos[i][1]
+			self.description = self.repos[i][2]
 
 class Repo ( gtk.Frame ):
 
 	name = ''
 	owner = ''
 	description = ''
-	revision = ''
 
 	def __init__ ( self, repository, clip=40 ):
 		gtk.Frame.__init__( self )

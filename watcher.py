@@ -14,6 +14,8 @@ import pygtk
 pygtk.require( '2.0' )
 import gtk, gobject
 
+import datetime
+
 from console import Console
 from repo import Repo
 #print "Cloning First Repository"
@@ -25,11 +27,12 @@ def github_fetch ( queue, username, first_run=False ):
 		repos = gh.repos.watched( username )
 		
 		#from repo import StubRepo
-		#repos = ( StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo(), StubRepo() )
-
+		
 		if first_run:
+			#repos = ( StubRepo(1), StubRepo(2), StubRepo(3) )
 			queue.put( [ "LOAD", repos ] )
 		else:
+			#repos = ( StubRepo(1), StubRepo(3), StubRepo(0) )
 			queue.put( [ "UPDATE", repos ] )
 
 class Watcher:
@@ -67,6 +70,7 @@ class Watcher:
 		self.window.set_border_width( 5 )
 		
 		# Setup repo view
+		self.repos = {}
 		self.repo_boxes = gtk.VBox()
 		scroll = gtk.ScrolledWindow()
 		scroll.set_policy( gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC )
@@ -101,6 +105,10 @@ class Watcher:
 
 		# Start the update timer
 		self.update_timer = gobject.timeout_add( 1000 * self.interval, self.update )
+		now = datetime.datetime.now()
+		diff = datetime.timedelta( seconds=self.interval )
+		then = now + diff
+		self.console.set_next_update( then.strftime( "%Y-%m-%d %H:%M:%S" ) )
 
 	def check_queues ( self ):
 		try:
@@ -115,7 +123,53 @@ class Watcher:
 				if "LOAD" == item[0]:
 					for repo in item[1]:
 						self.add_repo( repo )
+					keys = sorted( self.repos.keys(), key=lambda x: x.lower() )
+					for key in keys:
+						self.repo_boxes.pack_start( self.repos[key], False, False, 2 )
+						
+					self.console.set_repo_count( len( self.repos ) )
+					now = datetime.datetime.now()
+					self.console.set_last_update( now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+					
 					self.set_status( 'Repository list loaded.' )
+					
+				elif "UPDATE" == item[0]:
+					# Deleted
+					repo_names = []
+					for repo in item[1]:
+						repo_names.append( repo.name )
+
+					removed = 0
+					for name, obj in self.repos.items():
+						if name not in repo_names:
+							self.remove_repo( name )
+							removed = removed + 1
+
+					# Added 
+					repo_names = []
+					for name, obj in self.repos.items():
+						repo_names.append( name )
+
+					added = 0
+					for repo in item[1]:
+						if repo.name not in repo_names:
+							self.add_repo( repo )
+							added = added + 1
+
+					if 0 != added:
+						for name,repo in self.repos.items():
+							self.repo_boxes.remove( repo )
+
+						keys = sorted( self.repos.keys(), key=lambda x: x.lower() )
+
+						for key in keys:
+							self.repo_boxes.pack_start( self.repos[key], False, False, 2 )
+
+					self.console.set_repo_count( len( self.repos ) )
+					now = datetime.datetime.now()
+					self.console.set_last_update( now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+
+					self.set_status( 'Repository list updated. +%d -%d' % ( added, removed ) )
 				else:
 					print "Unknown GitHub Command:", item[0]
 		except:
@@ -124,8 +178,13 @@ class Watcher:
 		return True
 
 	def update ( self ):
-		# TODO!
-		return
+		if self.github_process.is_alive():
+		 return True
+		self.set_status( 'Updating repository list.' )
+		self.github_process = Process( target=github_fetch, args=( self.github_queue, self.username ) )
+		self.github_process.daemon = True
+		self.github_process.start()
+		return True
 
 	# Raise or show the window
 	def show_window ( self, data ):
@@ -150,14 +209,14 @@ class Watcher:
 		self.status.pop( context )
 		self.status.push( context, message )
 
-	# Add a repo to the window
+	# Add a repo to the stack
 	def add_repo ( self, repository ):
-		repo = Repo( repository, self.clip )
-		self.repo_boxes.pack_start( repo, False, False, 2 )
-		repo.show_all()
-		#it = self.repo_store.append( None, [ repository.name, '', '' ] )
-		#self.repo_store.append( it, [ '', '[Owner]', repository.owner ] )
-		#self.repo_store.append( it, [ '', '[Desc]', repository.description ] )
+		self.repos[ repository.name ] = Repo( repository, self.clip )
+		self.repos[ repository.name ].show_all()
+	
+	def remove_repo ( self, repository_name ):
+		self.repo_boxes.remove( self.repos[ repository_name ] )
+		del self.repos[ repository_name ]
 	
 	# Run gtk!
 	def main( self ):

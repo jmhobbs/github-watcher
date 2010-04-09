@@ -49,6 +49,9 @@ class Console ( gtk.Frame ):
 		
 		self.add( table )
 
+	def set_repo_count ( self, count ):
+		self.repo_count.set_text( "%d" % count )
+
 	def set_last_update ( self, when ):
 		self.last_update.set_text( when )
 	
