@@ -5,8 +5,6 @@
 # http://github.com/dustin/py-github
 # http://develop.github.com/p/users.html
 
-import sys
-import os
 import datetime
 import time
 
@@ -24,12 +22,6 @@ from repo import Repo
 
 from traceback import format_exc
 
-def full_path ( path ): # TODO: Cross platform...?
-	if "/" != path[0]:
-		return sys.path[0] + "/" + path
-	else:
-		return path
-
 def github_fetch ( queue, username, first_run=False ):
 		gh = github.GitHub()
 		repos = gh.repos.watched( username )
@@ -44,56 +36,68 @@ class Watcher:
 		self.config = config
 
 		gtk.window_set_default_icon_from_file( 'icon.16.png' )
-		
+
 		# Setup Tray
 		self.tray = gtk.status_icon_new_from_file( 'icon.16.png' )
 		self.tray.set_tooltip( 'GitHub Watcher' )
 		self.tray.connect( 'popup-menu', self.tray_popup )
+		self.tray.connect( 'activate', self.toggle_window )
 
+		# Setup Tray Menu
 		self.tray_menu = gtk.Menu()
+
 		menu_item = gtk.MenuItem( "Show" )
 		menu_item.connect( "activate", self.show_window )
 		menu_item.show()
-		
 		self.tray_menu.append( menu_item )
+
+		menu_item = gtk.MenuItem( "About" )
+		menu_item.connect( "activate", self.show_about )
+		menu_item.show()
+		self.tray_menu.append( menu_item )
+
+		menu_item = gtk.SeparatorMenuItem()
+		menu_item.show()
+		self.tray_menu.append( menu_item )
+
 		menu_item = gtk.MenuItem( "Quit" )
 		menu_item.connect( "activate", self.quit )
 		menu_item.show()
 		self.tray_menu.append( menu_item )
-		
+
 		# Setup Window
 		self.window = gtk.Window( gtk.WINDOW_TOPLEVEL )
 		self.window.connect( "delete_event", self.hide_window )
 		self.window.set_title( "GitHub Watcher" )
 		self.window.set_size_request( 600, 400 )
 		self.window.set_border_width( 5 )
-		
+
 		# Setup repo view
 		self.repos = {}
 		self.repo_boxes = gtk.VBox()
 		scroll = gtk.ScrolledWindow()
 		scroll.set_policy( gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC )
 		scroll.add_with_viewport( self.repo_boxes )
-		
+
 		# Add the console & status bar
 		self.console = Console( self.config.get( 'General', 'username' ) )
 		self.status = gtk.Statusbar()
 		self.set_status( 'Welcome to GitHub Watcher!' )
-		
+
 		# Pack it all in
 		vbox = gtk.VBox()
 		vbox.pack_start( self.console, False, False, 0 )
 		vbox.pack_end( self.status, False, False, 0 )
 		vbox.pack_end( scroll, True, True, 0 )
-		
+
 		self.window.add( vbox )
 		self.window.show_all()
-		
+
 		# Setup multi-processing
 		self.github_process = None
 		self.github_queue = Queue()
 		self.queue_timer = gobject.timeout_add( 250, self.check_queue )
-		
+
 		# Initial load of repos
 		self.set_status( 'Loading repository list.' )
 		self.github_process = Process( target=github_fetch, args=( self.github_queue, self.config.get( 'General', 'username' ), True ) )
@@ -107,9 +111,11 @@ class Watcher:
 		then = now + diff
 		self.console.set_next_update( then.strftime( "%Y-%m-%d %H:%M:%S" ) )
 
-	
-	def check_queue ( self ):
 
+	def check_queue ( self ):
+		"""
+		Check the GitHub message queue for things to update.
+		"""
 		try:
 			while True:
 				item = self.github_queue.get( False )
@@ -119,16 +125,16 @@ class Watcher:
 					keys = sorted( self.repos.keys(), key=lambda x: x.lower() )
 					for key in keys:
 						self.repo_boxes.pack_start( self.repos[key], False, False, 2 )
-						
+
 					self.console.set_repo_count( len( self.repos ) )
 					now = datetime.datetime.now()
 					self.console.set_last_update( now.strftime( "%Y-%m-%d %H:%M:%S" ) )
 					diff = datetime.timedelta( seconds=self.config.getint( 'API', 'interval' ) )
 					then = now + diff
 					self.console.set_next_update( then.strftime( "%Y-%m-%d %H:%M:%S" ) )
-					
+
 					self.set_status( 'Repository list loaded.' )
-					
+
 				elif "UPDATE" == item[0]:
 					# Deleted
 					repo_names = []
@@ -141,7 +147,7 @@ class Watcher:
 							self.remove_repo( name )
 							removed = removed + 1
 
-					# Added 
+					# Added
 					repo_names = []
 					for name, obj in self.repos.items():
 						repo_names.append( name )
@@ -169,7 +175,7 @@ class Watcher:
 					self.console.set_next_update( then.strftime( "%Y-%m-%d %H:%M:%S" ) )
 
 					self.set_status( 'Repository list updated. +%d -%d' % ( added, removed ) )
-					
+
 				else:
 					print "Unknown GitHub Command:", item[0]
 		except Empty, e:
@@ -178,7 +184,7 @@ class Watcher:
 			print e
 			print format_exc()
 			pass
-		
+
 		return True
 
 	def update ( self ):
@@ -190,6 +196,12 @@ class Watcher:
 		self.github_process.start()
 		return True
 
+	def toggle_window ( self, data=None ):
+		if self.window.get_property( 'visible' ):
+			self.window.hide()
+		else:
+			self.window.present()
+
 	# Raise or show the window
 	def show_window ( self, data ):
 		self.window.present()
@@ -199,8 +211,23 @@ class Watcher:
 		self.window.hide()
 		return True
 
-	# Really quit
+	# Try to quit the application
 	def quit ( self, data ):
+		dialog = gtk.Dialog(
+			"Quit?",
+			self.window,
+			gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+			( gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT, gtk.STOCK_OK, gtk.RESPONSE_ACCEPT )
+		)
+		label = gtk.Label( "Really quit GitHub Watcher?" )
+		dialog.get_content_area().pack_start( label )
+		dialog.set_size_request( 300, 100 )
+		label.show()
+		response = dialog.run()
+		dialog.hide()
+		del dialog
+		if gtk.RESPONSE_REJECT == response:
+			return
 		gtk.main_quit()
 
 	# Show the tray menu
@@ -215,7 +242,7 @@ class Watcher:
 
 	# Add a repo to the stack
 	def add_repo ( self, repository ):
-		self.repos[ repository.name ] = Repo( 
+		self.repos[ repository.name ] = Repo(
 			repository,
 			self.config.getboolean( 'Sync', 'sync' ),
 			self.config.get( 'Sync', 'sync-directory' ),
@@ -225,16 +252,46 @@ class Watcher:
 			self.config.getint( 'General', 'description-clip' ),
 			)
 		self.repos[ repository.name ].show_all()
-	
+
 	def remove_repo ( self, repository_name ):
+		"""
+		Remove a repo from the display. Does not clean up sync directory.
+		"""
 		self.repo_boxes.remove( self.repos[ repository_name ] )
 		del self.repos[ repository_name ]
-	
+
+	def show_about ( self, data=None ):
+		about = gtk.AboutDialog()
+		about.set_name( "GitHub Watcher" )
+		about.set_version( "0.1" )
+		about.set_copyright( "© 2010 John Hobbs" )
+		f = open( "LICENSE", "r" )
+		about.set_license( f.read() )
+		f.close()
+		about.set_wrap_license( True )
+		about.set_website( "http://jmhobbs.github.com/github-watcher" )
+		about.set_authors( ( "John Hobbs", ) )
+		about.set_logo( gtk.gdk.pixbuf_new_from_file( "icon.16.png" ) )
+		about.set_comments( "Sync your GitHub watch list." )
+		about.set_modal( True )
+		about.run()
+		about.hide()
+		del about
+
 	# Run gtk!
 	def main( self ):
 		gtk.main()
 
 if __name__ == "__main__":
+	import sys
+	import os
+
+	# Go to our default path
+	os.chdir( sys.path[0] )
+	if sys.path[0] != os.getcwd():
+		print "ERROR: Could not change directory to %s." % sys.path[0]
+		exit()
+
 	import ConfigParser
 	config = ConfigParser.RawConfigParser()
 	config.read( 'config.ini' )
