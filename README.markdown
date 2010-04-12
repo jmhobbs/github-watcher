@@ -4,7 +4,11 @@ Github Watcher is a GTK+ desktop application that monitors your Github watch lis
 
 # Is it ready?
 
-Not really.  It does everything it is supposed to, up to a point.  I haven't got it all the way debugged, and to be honest it needs some re-writes because I was in a hurry the first time.  But it will download and sync your repos, just not consistently over a long period of time.
+Yes! It works for me on my Debian box, but YMMV.
+
+# Can I see it?
+
+Screenshot is at <http://github.com/jmhobbs/github-watcher/blob/gh-pages/images/screenshot.8c0d64d.png> and may be a bit stale.
 
 # Dependencies
 
