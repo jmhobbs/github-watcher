@@ -112,8 +112,9 @@ class Repo ( gtk.Frame ):
 		
 		if self.do_sync and ( self.sync_own or self.owner != self.username ):
 			self.queue_timer = gobject.timeout_add( 250, self.check_queue )
-			self.sync_timer = gobject.timeout_add( 1000 * self.sync_interval, self.sync )
-			self.sync()
+			self.sync_timer = None
+			timeout = 1000 * random.randint( 5, 20 )
+			self.one_shot = gobject.timeout_add( timeout, self.sync )
 		else:
 			self.state_label.set_text( "Sync Disabled" )
 
@@ -123,6 +124,12 @@ class Repo ( gtk.Frame ):
 		self.git_process = Process( target=git_fetch, args=( self.git_queue, self.sync_path, self.name, "git://github.com/%s/%s.git" % ( self.owner, self.name ) ) )
 		self.git_process.daemon = True
 		self.git_process.start()
+		
+		if self.sync_timer == None:
+			self.sync_timer = gobject.timeout_add( 1000 * self.sync_interval, self.sync )
+			return False
+		else:
+			return True
 
 	def check_queue ( self ):
 		try:
