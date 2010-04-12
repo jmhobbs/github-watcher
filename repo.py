@@ -3,35 +3,38 @@
 import time
 import datetime
 
+import random
+
+import os
+
 import pygtk
 pygtk.require( '2.0' )
-import gtk
+import gtk, gobject
 
-class StubRepo:
-	name = "Stub"
-	owner = "Me"
-	description = "A Stub Repo"
+import git
 
-	repos = [
-		[ "Pongo", "jmhobbs", "PyGTK interface to MongoDB" ],
-		[ "MkLst", "jmhobbs", "Dead simple lists." ],
-		[ "q-aargh", "jmhobbs", "Attach digital data to real world objects." ],
-		[ "poseurhttp", "abraham", "PHP library for making HTTP connections with cURL" ],
-		[ "storytlr", "eschnou", "The core of the Storytlr platform" ],
-		[ "mf", "stuartherbert", "Methodosity Framework for PHP" ]
-	]
+from multiprocessing import Process, Queue
+from Queue import Empty
 
-	def __init__ ( self, i=None ):
-		if i == None:
-			import random
-			sample = random.sample( self.repos, 1 )
-			self.name = sample[0][0]
-			self.owner = sample[0][1]
-			self.description = sample[0][2]
-		else:
-			self.name = self.repos[i][0]
-			self.owner = self.repos[i][1]
-			self.description = self.repos[i][2]
+from traceback import format_exc
+
+def git_fetch ( queue, sync_path, repo_name, uri ):
+	full_path = sync_path + repo_name
+	if os.path.exists( full_path ):
+		queue.put( [ "PULL", repo_name ] )
+		try:
+			repo = git.Repo( full_path )
+			repo.remotes.origin.pull()
+			queue.put( [ "PULLED", repo_name ] )
+		except:
+			queue.put( [ "FAILED", repo_name ] )
+	else:
+		queue.put( [ "CLONE", repo_name ] )
+		try:
+			repo = git.Git().clone( uri, full_path )
+			queue.put( [ "CLONED", repo_name ] )
+		except:
+			queue.put( [ "FAILED", repo_name ] )
 
 class Repo ( gtk.Frame ):
 
@@ -42,8 +45,15 @@ class Repo ( gtk.Frame ):
 	syncing = False
 	last_sync = 0
 
-	def __init__ ( self, repository, clip=40 ):
+	def __init__ ( self, repository, do_sync, sync_path, sync_interval, sync_own, username, clip=40 ):
 		gtk.Frame.__init__( self )
+
+		self.do_sync = do_sync
+		self.sync_own = sync_own
+		self.username = username
+
+		self.sync_path = sync_path
+		self.sync_interval = sync_interval
 
 		self.name = repository.name
 		self.owner = repository.owner
@@ -91,11 +101,56 @@ class Repo ( gtk.Frame ):
 		label.set_alignment( 1, 1 )
 		table.attach( label, 0, 1, 3, 4, 0, 0, 2, 2 )
 		
-		self.state_label = gtk.Label( "Unknown" )
+		self.state_label = gtk.Label( "Sync Pending" )
 		self.state_label.set_alignment( 0, 1 )
 		table.attach( self.state_label, 1, 2, 3, 4, gtk.EXPAND|gtk.FILL, gtk.EXPAND|gtk.FILL, 2, 2 )
 
 		self.add( table )
+		
+		self.git_process = None
+		self.git_queue = Queue()
+		
+		if self.do_sync and ( self.sync_own or self.owner != self.username ):
+			self.queue_timer = gobject.timeout_add( 250, self.check_queue )
+			self.sync_timer = gobject.timeout_add( 1000 * self.sync_interval, self.sync )
+			self.sync()
+		else:
+			self.state_label.set_text( "Sync Disabled" )
+
+	def sync ( self ):
+		if None != self.git_process and self.git_process.is_alive():
+		 return True
+		self.git_process = Process( target=git_fetch, args=( self.git_queue, self.sync_path, self.name, "git://github.com/%s/%s.git" % ( self.owner, self.name ) ) )
+		self.git_process.daemon = True
+		self.git_process.start()
+
+	def check_queue ( self ):
+		try:
+			while True:
+				item = self.git_queue.get( False )
+				if "PULL" == item[0]:
+					self.sync_start()
+				elif "PULLED" == item[0]:
+					self.sync_end( True )
+				elif "CLONE" == item[0]:
+					self.clone_start()
+				elif "CLONED" == item[0]:
+					self.clone_end( True )
+				elif "FAILED" == item[0]:
+					if self.cloning:
+						self.clone_end( False )
+					else:
+						self.sync_end( False )
+				else:
+					print "Unknown Git Command:", item[0]
+		except Empty, e:
+			pass
+		except Exception, e:
+			print e
+			print format_exc()
+			pass
+
+		return True
 
 	def clone_start ( self ):
 		self.cloning = True

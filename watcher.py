@@ -14,7 +14,6 @@ from multiprocessing import Process, Queue
 from Queue import Empty
 
 import github.github as github
-import git
 
 import pygtk
 pygtk.require( '2.0' )
@@ -22,6 +21,8 @@ import gtk, gobject
 
 from console import Console
 from repo import Repo
+
+from traceback import format_exc
 
 def full_path ( path ): # TODO: Cross platform...?
 	if "/" != path[0]:
@@ -37,33 +38,10 @@ def github_fetch ( queue, username, first_run=False ):
 		else:
 			queue.put( [ "UPDATE", repos ] )
 
-def git_fetch ( queue, sync_path, repo_name, uri ):
-	full_path = sync_path + "/" + repo_name
-	if os.path.exists( full_path ):
-		queue.put( [ "PULL", repo_name ] )
-		try:
-			repo = git.Repo( full_path )
-			repo.remotes.origin.pull()
-			queue.put( [ "PULLED", repo_name ] )
-		except:
-			queue.put( [ "FAILED", repo_name ] )
-	else:
-		queue.put( [ "CLONE", repo_name ] )
-		try:
-			repo = git.Git().clone( uri, full_path )
-			queue.put( [ "CLONED", repo_name ] )
-		except:
-			queue.put( [ "FAILED", repo_name ] )
-
 class Watcher:
-	def __init__ ( self, username, interval, sync, directory, sync_interval, clip ):
+	def __init__ ( self, config ):
 
-		self.username = username
-		self.interval = interval
-		self.sync = sync
-		self.sync_interval = sync_interval
-		self.sync_directory = directory
-		self.clip = clip
+		self.config = config
 
 		gtk.window_set_default_icon_from_file( 'icon.16.png' )
 		
@@ -98,7 +76,7 @@ class Watcher:
 		scroll.add_with_viewport( self.repo_boxes )
 		
 		# Add the console & status bar
-		self.console = Console( self.username )
+		self.console = Console( self.config.get( 'General', 'username' ) )
 		self.status = gtk.Statusbar()
 		self.set_status( 'Welcome to GitHub Watcher!' )
 		
@@ -112,58 +90,25 @@ class Watcher:
 		self.window.show_all()
 		
 		# Setup multi-processing
-		self.git_process = None
-		self.git_queue = Queue()
 		self.github_process = None
 		self.github_queue = Queue()
-		self.queue_timer = gobject.timeout_add( 250, self.check_queues )
+		self.queue_timer = gobject.timeout_add( 250, self.check_queue )
 		
 		# Initial load of repos
 		self.set_status( 'Loading repository list.' )
-		self.github_process = Process( target=github_fetch, args=( self.github_queue, self.username, True ) )
+		self.github_process = Process( target=github_fetch, args=( self.github_queue, self.config.get( 'General', 'username' ), True ) )
 		self.github_process.daemon = True
 		self.github_process.start()
 
-		self.start_timer()
-
-	def start_timer ( self ):
 		# Start the update timer
-		self.update_timer = gobject.timeout_add( 1000 * self.interval, self.update )
+		self.update_timer = gobject.timeout_add( 1000 * self.config.getint( 'API', 'interval' ), self.update )
 		now = datetime.datetime.now()
-		diff = datetime.timedelta( seconds=self.interval )
+		diff = datetime.timedelta( seconds=self.config.getint( 'API', 'interval' ) )
 		then = now + diff
 		self.console.set_next_update( then.strftime( "%Y-%m-%d %H:%M:%S" ) )
 
 	
-	def check_queues ( self ):
-		try:
-			while True:
-				item = self.git_queue.get( False )
-				if "PULL" == item[0]:
-					self.repos[item[1]].sync_start()
-				elif "PULLED" == item[0]:
-					self.repos[item[1]].sync_end( True )
-					self.sync_repos()
-				elif "CLONE" == item[0]:
-					self.repos[item[1]].clone_start()
-				elif "CLONED" == item[0]:
-					self.repos[item[1]].clone_end( True)
-					self.sync_repos()
-				elif "FAILED" == item[0]:
-					if self.repos[item[1]].cloning:
-						self.repos[item[1]].clone_end( False )
-					else:
-						self.repos[item[1]].sync_end( False )
-					self.sync_repos()
-				else:
-					print "Unknown Git Command:", item[0]
-		except Empty, e:
-			pass
-		except Exception, e:
-			from traceback import format_exc
-			print e
-			print format_exc()
-			pass
+	def check_queue ( self ):
 
 		try:
 			while True:
@@ -178,9 +123,11 @@ class Watcher:
 					self.console.set_repo_count( len( self.repos ) )
 					now = datetime.datetime.now()
 					self.console.set_last_update( now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+					diff = datetime.timedelta( seconds=self.config.getint( 'API', 'interval' ) )
+					then = now + diff
+					self.console.set_next_update( then.strftime( "%Y-%m-%d %H:%M:%S" ) )
 					
 					self.set_status( 'Repository list loaded.' )
-					self.sync_repos()
 					
 				elif "UPDATE" == item[0]:
 					# Deleted
@@ -217,16 +164,17 @@ class Watcher:
 					self.console.set_repo_count( len( self.repos ) )
 					now = datetime.datetime.now()
 					self.console.set_last_update( now.strftime( "%Y-%m-%d %H:%M:%S" ) )
+					diff = datetime.timedelta( seconds=self.config.getint( 'API', 'interval' ) )
+					then = now + diff
+					self.console.set_next_update( then.strftime( "%Y-%m-%d %H:%M:%S" ) )
 
 					self.set_status( 'Repository list updated. +%d -%d' % ( added, removed ) )
-					self.sync_repos()
-
+					
 				else:
 					print "Unknown GitHub Command:", item[0]
 		except Empty, e:
 			pass
 		except Exception, e:
-			from traceback import format_exc
 			print e
 			print format_exc()
 			pass
@@ -237,24 +185,10 @@ class Watcher:
 		if self.github_process.is_alive():
 		 return True
 		self.set_status( 'Updating repository list.' )
-		self.github_process = Process( target=github_fetch, args=( self.github_queue, self.username ) )
+		self.github_process = Process( target=github_fetch, args=( self.github_queue, self.config.get( 'General', 'username' ) ) )
 		self.github_process.daemon = True
 		self.github_process.start()
-		return False
-
-	def sync_repos ( self ):
-		if None != self.git_process and self.git_process.is_alive():
-			return False
-
-		for name,repo in self.repos.items():
-			if repo.last_sync < time.mktime(datetime.datetime.now().timetuple()) - self.sync_interval:
-				self.git_process = Process( target=git_fetch, args=( self.git_queue, self.sync_directory, name, "git://github.com/%s/%s.git" % ( repo.owner, repo.name ) ) )
-				self.git_process.daemon = True
-				self.git_process.start()
-				return
-
-		self.start_timer()
-
+		return True
 
 	# Raise or show the window
 	def show_window ( self, data ):
@@ -281,7 +215,15 @@ class Watcher:
 
 	# Add a repo to the stack
 	def add_repo ( self, repository ):
-		self.repos[ repository.name ] = Repo( repository, self.clip )
+		self.repos[ repository.name ] = Repo( 
+			repository,
+			self.config.getboolean( 'Sync', 'sync' ),
+			self.config.get( 'Sync', 'sync-directory' ),
+			self.config.getint( 'Sync', 'sync-interval' ),
+			self.config.getboolean( 'Sync', 'sync-own' ),
+			self.config.get( 'General', 'username' ),
+			self.config.getint( 'General', 'description-clip' ),
+			)
 		self.repos[ repository.name ].show_all()
 	
 	def remove_repo ( self, repository_name ):
@@ -297,12 +239,5 @@ if __name__ == "__main__":
 	config = ConfigParser.RawConfigParser()
 	config.read( 'config.ini' )
 
-	app = Watcher( 
-		config.get( 'General', 'username' ),
-		config.getint( 'API', 'interval' ),
-		config.getboolean( 'Sync', 'sync' ),
-		config.get( 'Sync', 'sync-dir' ),
-		config.getint( 'Sync', 'interval' ),
-		config.getint( 'General', 'description-clip' )
-	)
+	app = Watcher( config )
 	app.main()
