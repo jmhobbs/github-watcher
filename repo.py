@@ -78,7 +78,11 @@ class Repo ( gtk.Frame ):
 
 		self.name = repository.name
 		self.owner = repository.owner
-		self.description = repository.description
+		# A description is not always guaranteed.
+		try:
+			self.description = repository.description
+		except:
+			self.description = '(No Description)'
 
 		table = gtk.Table( 4, 2 )
 		table.set_col_spacings( 3 )
