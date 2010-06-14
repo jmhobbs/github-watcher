@@ -33,24 +33,75 @@ from Queue import Empty
 
 import github.github as github
 
+from repo import Repo
+
 class GithubWatcherDaemon:
 
+	repos = {}
+
 	def __init__ ( self, config ):
+		self.config = config
 		# Set up our socket
-		self.socket_file = config.get( 'General', 'socket' )
+		self.socket_file = self.config.get( 'General', 'socket' )
 		if os.path.exists( self.socket_file ):
 			os.remove( self.socket_file )
 		self.socket = socket.socket( socket.AF_UNIX, socket.SOCK_DGRAM )
 		self.socket.bind( self.socket_file )
-		self.username = config.get( 'General', 'username' )
+		self.username = self.config.get( 'General', 'username' )
 	
 	def __del__ ( self ):
 		server.close()
 		os.remove( self.socket_file )
 	
 	def main ( self ):
-		print "STUB: Main"
+		self.load_list()
+		print self.repos
 	
+	def load_list ( self ):
+		gh = github.GitHub()
+		repos = gh.repos.watched( self.username )
+		for repo in repos:
+			self.add_repo( repo )
+	
+	#def refresh_list ( self ):
+		#gh = github.GitHub()
+		#repos = gh.repos.watched( self.username )
+		
+		## Deleted
+		#repo_names = []
+		#for repo in repos[1]:
+			#repo_names.append( repo.name )
+
+		#removed = 0
+		#for name, obj in self.repos.items():
+			#if name not in repo_names:
+				#self.remove_repo( name )
+				#removed = removed + 1
+
+		## Added
+		#repo_names = []
+		#for name, obj in self.repos.items():
+			#repo_names.append( name )
+
+		#added = 0
+		#for repo in repos[1]:
+			#if repo.name not in repo_names:
+				#self.add_repo( repo )
+				#added = added + 1
+
+	def add_repo ( self, repo ):
+		self.repos['%s/%s' % ( repo.owner, repo.name )] = Repo(
+			repo,
+			self.config.getboolean( 'Sync', 'sync' ),
+			self.config.get( 'Sync', 'sync-directory' ),
+			self.config.getint( 'Sync', 'sync-interval' ),
+			self.config.getboolean( 'Sync', 'sync-own' ),
+			self.config.get( 'General', 'username' )
+		)
+	
+	def remove_repo( self, owner, name ):
+		del self.repos['%s/%s' % ( owner, name )]
+
 if __name__ == "__main__":
 	import sys
 
